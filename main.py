@@ -15,6 +15,7 @@ import torch.onnx
 import torch.nn as nn
 from copy import deepcopy
 from random_generator_battery import ESSEnv
+import matplotlib.pyplot as plt
 
 class ReplayBuffer:
     def __init__(self, max_len, state_dim, action_dim, gpu_id=0):
@@ -250,7 +251,7 @@ if __name__ == '__main__':
     reward_record = {'episode': [], 'steps': [], 'mean_episode_reward': [], 'unbalance': [],
                      'episode_operation_cost': []}
     loss_record = {'episode': [], 'steps': [], 'critic_loss': [], 'actor_loss': [], 'entropy_loss': []}
-    num_episode = 3000
+    num_episode = 10
     gamma = 0.995  # discount factor of future rewards
     learning_rate = 1e-4  # 2 ** -14 ~= 6e-5
     soft_update_tau = 1e-2  # 2 ** -8 ~= 5e-3
@@ -305,3 +306,5 @@ if __name__ == '__main__':
                 agent._update_exploration_rate(explorate_decay, explorate_min)
                 trajectory = agent.explore_env(env, target_step)
                 steps, r_exp = update_buffer(trajectory)
+
+    print(loss_record)
