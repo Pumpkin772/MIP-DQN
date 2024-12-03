@@ -24,14 +24,15 @@ class DataManager():
         self.PV_Generation=[]
         self.Prices=[]
         self.Electricity_Consumption=[]
-
     def add_pv_element(self,element):self.PV_Generation.append(element)
     def add_price_element(self,element):self.Prices.append(element)
     def add_electricity_element(self,element):self.Electricity_Consumption.append(element)
 
+    # get current time data based on given month day, and day_time
     def get_pv_data(self,month,day,day_time):return self.PV_Generation[(sum(Constant.MONTHS_LEN[:month-1])+day-1)*24+day_time]
     def get_price_data(self,month,day,day_time):return self.Prices[(sum(Constant.MONTHS_LEN[:month-1])+day-1)*24+day_time]
     def get_electricity_cons_data(self,month,day,day_time):return self.Electricity_Consumption[(sum(Constant.MONTHS_LEN[:month-1])+day-1)*24+day_time]
+    # get series data for one episode
     def get_series_pv_data(self,month,day): return self.PV_Generation[(sum(Constant.MONTHS_LEN[:month-1])+day-1)*24:(sum(Constant.MONTHS_LEN[:month-1])+day-1)*24+24]
     def get_series_price_data(self,month,day):return self.Prices[(sum(Constant.MONTHS_LEN[:month-1])+day-1)*24:(sum(Constant.MONTHS_LEN[:month-1])+day-1)*24+24]
     def get_series_electricity_cons_data(self,month,day):return self.Electricity_Consumption[(sum(Constant.MONTHS_LEN[:month-1])+day-1)*24:(sum(Constant.MONTHS_LEN[:month-1])+day-1)*24+24]
@@ -87,7 +88,8 @@ class Battery():
         energy = action_battery * self.max_charge
         updated_capacity = max(self.min_soc,
                                min(self.max_soc, (self.current_capacity * self.capacity + energy) / self.capacity))
-        self.energy_change = (updated_capacity - self.current_capacity) * self.capacity  # if charge, positive, if discharge, negative
+        self.energy_change = (
+                                         updated_capacity - self.current_capacity) * self.capacity  # if charge, positive, if discharge, negative
         self.current_capacity = updated_capacity  # update capacity to current codition
 
     def _get_cost(self, energy):  # calculate the cost depends on the energy change
@@ -138,7 +140,7 @@ class ESSEnv(gym.Env):
         # parameters
         self.data_manager = DataManager()
         self._load_year_data()
-        self.episode_length = kwargs.get('episode_length', 24)
+        self.episode_length = kwargs.get('episode_length', 24)  # 如果键存在，返回对应的值；如果键不存在，则返回方法的第二个参数作为默认值。
         self.month = None
         self.day = None
         self.TRAIN = True
@@ -190,7 +192,7 @@ class ESSEnv(gym.Env):
         dg1_output = self.dg1.current_output / self.DG1_max
         dg2_output = self.dg2.current_output / self.DG2_max
         dg3_output = self.dg3.current_output / self.DG3_max
-        time_step = self.current_time / (self.Length_max - 1)
+        time_step = self.current_time / (self.Length_max - 1) # current_time为当前小时数
         electricity_demand = self.data_manager.get_electricity_cons_data(self.month, self.day, self.current_time)
         pv_generation = self.data_manager.get_pv_data(self.month, self.day, self.current_time)
         price = self.data_manager.get_price_data(self.month, self.day, self.current_time) / self.Price_max
@@ -249,7 +251,7 @@ class ESSEnv(gym.Env):
                    deficient_penalty - sell_benefit + buy_cost) / 2e3
 
         self.operation_cost = battery_cost + dg1_cost + dg2_cost + dg3_cost + buy_cost - sell_benefit + (
-                    self.shedding + self.excess) * self.penalty_coefficient
+                self.shedding + self.excess) * self.penalty_coefficient
 
         self.unbalance = unbalance
         self.real_unbalance = self.shedding + self.excess
