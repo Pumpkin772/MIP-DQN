@@ -15,7 +15,7 @@ import torch.onnx
 import torch.nn as nn
 from copy import deepcopy
 from random_generator_battery import ESSEnv
-import matplotlib.pyplot as plt
+
 
 
 class ReplayBuffer:
@@ -260,6 +260,93 @@ def get_episode_return(env, act, device):
             break
     return episode_return, episode_unbalance, episode_operation_cost
 
+class Actor_MIP:
+    '''this actor is used to get the best action and Q function, the only input should be batch tensor state, action, and network, while the output should be
+    batch tensor max_action, batch tensor max_Q'''
+    def __init__(self,scaled_parameters,batch_size,net,state_dim,action_dim,env,constrain_on=False):
+        self.batch_size = batch_size
+        self.net = net
+        self.state_dim = state_dim
+        self.action_dim =action_dim
+        self.env = env
+        self.constrain_on=constrain_on
+        self.scaled_parameters=scaled_parameters
+
+    def get_input_bounds(self,input_batch_state):
+        batch_size = self.batch_size
+        batch_input_bounds = []
+        lbs_states = input_batch_state.detach().numpy()
+        ubs_states = lbs_states
+
+        for i in range(batch_size):
+            input_bounds = {}
+            for j in range(self.action_dim + self.state_dim):
+                if j < self.state_dim:
+                    input_bounds[j] = (float(lbs_states[i][j]), float(ubs_states[i][j]))
+                else:
+                    input_bounds[j] = (float(-1), float(1))
+            batch_input_bounds.append(input_bounds)
+        return batch_input_bounds
+
+    def predict_best_action(self, state):
+        state=state.detach().cpu().numpy()
+        v1 = torch.zeros((1, self.state_dim+self.action_dim), dtype=torch.float32)
+        '''this function is used to get the best action based on current net'''
+        model = self.net.to('cpu')
+        input_bounds = {}
+        lb_state = state
+        ub_state = state
+        for i in range(self.action_dim + self.state_dim):
+            if i < self.state_dim:
+                input_bounds[i] = (float(lb_state[0][i]), float(ub_state[0][i]))
+            else:
+                input_bounds[i] = (float(-1), float(1))
+
+        with tempfile.NamedTemporaryFile(suffix='.onnx', delete=False) as f:
+            # export neural network to ONNX
+            torch.onnx.export(
+                model,
+                v1,
+                f,
+                input_names=['state_action'],
+                output_names=['Q_value'],
+                dynamic_axes={
+                    'state_action': {0: 'batch_size'},
+                    'Q_value': {0: 'batch_size'}
+                }
+            )
+            # write ONNX model and its bounds using OMLT
+        write_onnx_model_with_bounds(f.name, None, input_bounds)
+        # load the network definition from the ONNX model
+        network_definition = load_onnx_neural_network_with_bounds(f.name)
+        # global optimality
+        formulation = ReluBigMFormulation(network_definition)
+        m = pyo.ConcreteModel()
+        m.nn = OmltBlock()
+        m.nn.build_formulation(formulation)
+        '''# we are now building the surrogate model between action and state'''
+        # constrain for battery，
+        if self.constrain_on:
+            m.power_balance_con1 = pyo.Constraint(expr=(
+                    (-m.nn.inputs[7] * self.scaled_parameters[0])+\
+                    ((m.nn.inputs[8] * self.scaled_parameters[1])+m.nn.inputs[4]*self.scaled_parameters[5]) +\
+                    ((m.nn.inputs[9] * self.scaled_parameters[2])+m.nn.inputs[5]*self.scaled_parameters[6]) +\
+                    ((m.nn.inputs[10] * self.scaled_parameters[3])+m.nn.inputs[6]*self.scaled_parameters[7])>=\
+                    m.nn.inputs[3] *self.scaled_parameters[4]-self.env.grid.exchange_ability))
+            m.power_balance_con2 = pyo.Constraint(expr=(
+                    (-m.nn.inputs[7] * self.scaled_parameters[0])+\
+                    (m.nn.inputs[8] * self.scaled_parameters[1]+m.nn.inputs[4]*self.scaled_parameters[5]) +\
+                    (m.nn.inputs[9] * self.scaled_parameters[2]+m.nn.inputs[5]*self.scaled_parameters[6]) +\
+                    (m.nn.inputs[10] * self.scaled_parameters[3]+m.nn.inputs[6]*self.scaled_parameters[7])<=\
+                    m.nn.inputs[3] *self.scaled_parameters[4]+self.env.grid.exchange_ability))
+        m.obj = pyo.Objective(expr=(m.nn.outputs[0]), sense=pyo.maximize)
+
+        pyo.SolverFactory('gurobi').solve(m, tee=False)
+
+        best_input = pyo.value(m.nn.inputs[:])
+
+        best_action = (best_input[self.state_dim::])
+        return best_action
 
 if __name__ == '__main__':
 
