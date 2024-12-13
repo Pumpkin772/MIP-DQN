@@ -298,16 +298,16 @@ class Actor_MIP:
         ub_state = state
         for i in range(self.action_dim + self.state_dim):
             if i < self.state_dim:
-                input_bounds[i] = (float(lb_state[0][i]), float(ub_state[0][i]))
+                input_bounds[i] = (float(lb_state[0][i]), float(ub_state[0][i])) # 状态的约束
             else:
-                input_bounds[i] = (float(-1), float(1))
+                input_bounds[i] = (float(-1), float(1)) # 动作的约束
 
         with tempfile.NamedTemporaryFile(suffix='.onnx', delete=False) as f:
             # export neural network to ONNX
             torch.onnx.export(
                 model,
-                v1,
-                f,
+                v1, # 一个虚拟输入张量，用于导出模型。这个张量的形状和类型应该与模型期望的输入相匹配
+                f, # 模型被导入到文件f中
                 input_names=['state_action'],
                 output_names=['Q_value'],
                 dynamic_axes={
@@ -316,14 +316,14 @@ class Actor_MIP:
                 }
             )
             # write ONNX model and its bounds using OMLT
-        write_onnx_model_with_bounds(f.name, None, input_bounds)
+        write_onnx_model_with_bounds(f.name, None, input_bounds) # 将 ONNX 模型及其输入输出边界信息写入文件的函数，结合nn和优化
         # load the network definition from the ONNX model
         network_definition = load_onnx_neural_network_with_bounds(f.name)
         # global optimality
         formulation = ReluBigMFormulation(network_definition)
         m = pyo.ConcreteModel()
-        m.nn = OmltBlock()
-        m.nn.build_formulation(formulation)
+        m.nn = OmltBlock() # 创建一个 Pyomo 块（Block），这个块包含了与神经网络相关的变量和约束
+        m.nn.build_formulation(formulation) # 将 formulation 中定义的变量和约束添加到 OmltBlock 实例 m.nn 中
         '''# we are now building the surrogate model between action and state'''
         # constrain for battery，
         if self.constrain_on:
