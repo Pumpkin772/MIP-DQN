@@ -313,17 +313,17 @@ class Actor_MIP:
         # constrain for battery，
         if self.constrain_on:
             m.power_balance_con1 = pyo.Constraint(expr=(
-                    (-(m.nn.inputs[7]+m.nn.inputs[8]+m.nn.inputs[9]) * self.scaled_parameters[0])+\
-                    ((m.nn.inputs[10] * self.scaled_parameters[1])+m.nn.inputs[6]*self.scaled_parameters[5]) +\
-                    ((m.nn.inputs[11] * self.scaled_parameters[2])+m.nn.inputs[7]*self.scaled_parameters[6]) +\
-                    ((m.nn.inputs[12] * self.scaled_parameters[3])+m.nn.inputs[8]*self.scaled_parameters[7])>=\
-                    m.nn.inputs[5] *self.scaled_parameters[4]-self.env.grid.exchange_ability))
+                    (-m.nn.inputs[7] * self.scaled_parameters[0])+\
+                    ((m.nn.inputs[8] * self.scaled_parameters[1])+m.nn.inputs[4]*self.scaled_parameters[5]) +\
+                    ((m.nn.inputs[9] * self.scaled_parameters[2])+m.nn.inputs[5]*self.scaled_parameters[6]) +\
+                    ((m.nn.inputs[10] * self.scaled_parameters[3])+m.nn.inputs[6]*self.scaled_parameters[7])>=\
+                    m.nn.inputs[3] *self.scaled_parameters[4]-self.env.grid.exchange_ability))
             m.power_balance_con2 = pyo.Constraint(expr=(
-                    (-(m.nn.inputs[7]+m.nn.inputs[8]+m.nn.inputs[9]) * self.scaled_parameters[0])+\
-                    (m.nn.inputs[10] * self.scaled_parameters[1]+m.nn.inputs[6]*self.scaled_parameters[5]) +\
-                    (m.nn.inputs[11] * self.scaled_parameters[2]+m.nn.inputs[7]*self.scaled_parameters[6]) +\
-                    (m.nn.inputs[12] * self.scaled_parameters[3]+m.nn.inputs[8]*self.scaled_parameters[7])<=\
-                    m.nn.inputs[5] *self.scaled_parameters[4]+self.env.grid.exchange_ability))
+                    (-m.nn.inputs[7] * self.scaled_parameters[0])+\
+                    (m.nn.inputs[8] * self.scaled_parameters[1]+m.nn.inputs[4]*self.scaled_parameters[5]) +\
+                    (m.nn.inputs[9] * self.scaled_parameters[2]+m.nn.inputs[5]*self.scaled_parameters[6]) +\
+                    (m.nn.inputs[10] * self.scaled_parameters[3]+m.nn.inputs[6]*self.scaled_parameters[7])<=\
+                    m.nn.inputs[3] *self.scaled_parameters[4]+self.env.grid.exchange_ability))
             m.state_con3 = pyo.Constraint(expr=(m.nn.inputs[0] >= state[0][0]))
             m.state_con4 = pyo.Constraint(expr=(m.nn.inputs[0] <= state[0][0]))
             m.state_con5 = pyo.Constraint(expr=(m.nn.inputs[1] >= state[0][1]))
@@ -338,10 +338,6 @@ class Actor_MIP:
             m.state_con14 = pyo.Constraint(expr=(m.nn.inputs[5] <= state[0][5]))
             m.state_con15 = pyo.Constraint(expr=(m.nn.inputs[6] >= state[0][6]))
             m.state_con16 = pyo.Constraint(expr=(m.nn.inputs[6] <= state[0][6]))
-            m.state_con17 = pyo.Constraint(expr=(m.nn.inputs[7] >= state[0][7]))
-            m.state_con18 = pyo.Constraint(expr=(m.nn.inputs[7] <= state[0][7]))
-            m.state_con19 = pyo.Constraint(expr=(m.nn.inputs[8] >= state[0][8]))
-            m.state_con20 = pyo.Constraint(expr=(m.nn.inputs[8] <= state[0][8]))
         m.obj = pyo.Objective(expr=(m.nn.outputs[0]), sense=pyo.maximize) # [0]降二维至一维
 
         pyo.SolverFactory('gurobi').solve(m, tee=False)
@@ -395,7 +391,7 @@ if __name__ == '__main__':
     reward_record = {'episode': [], 'steps': [], 'mean_episode_reward': [], 'unbalance': [],
                      'episode_operation_cost': []}
     loss_record = {'episode': [], 'steps': [], 'critic_loss': [], 'actor_loss': [], 'entropy_loss': []}
-    num_episode = 200
+    num_episode = 300
     gamma = 0.995  # discount factor of future rewards
     learning_rate = 1e-4  # 2 ** -14 ~= 6e-5
     soft_update_tau = 1e-2  # 2 ** -8 ~= 5e-3
@@ -444,7 +440,7 @@ if __name__ == '__main__':
             reward_record['unbalance'].append(episode_unbalance)
             reward_record['episode_operation_cost'].append(episode_operation_cost)
         print(
-            f'curren epsiode is {i_episode}, reward:{episode_reward},unbalance:{episode_unbalance},cost:{episode_operation_cost},buffer_length: {buffer.now_len}')
+            f'current epsiode is {i_episode}, reward:{episode_reward},unbalance:{episode_unbalance},cost:{episode_operation_cost},buffer_length: {buffer.now_len}')
         if i_episode % 10 == 0:
             # target_step
             with torch.no_grad():
@@ -453,16 +449,3 @@ if __name__ == '__main__':
                 steps, r_exp = update_buffer(buffer, trajectory)
     print(reward_record)
     print(loss_record)
-    scaled_parameters = np.ones(8)
-    scaled_parameters[0] = env.battery.max_charge
-    scaled_parameters[1] = env.dg1.ramping_up
-    scaled_parameters[5] = env.dg1.power_output_max
-    scaled_parameters[2] = env.dg2.ramping_up
-    scaled_parameters[6] = env.dg2.power_output_max
-    scaled_parameters[3] = env.dg3.ramping_up
-    scaled_parameters[7] = env.dg3.power_output_max
-    scaled_parameters[4] = env.Netload_max
-    actor = Actor_MIP(scaled_parameters,batch_size,agent.cri,env.state_space.shape[0],env.action_space.shape[0],env)
-    record = test_one_episode_MIP(env,actor,agent.device)
-    print(record['reward'])
-    print(record['unbalance'])
